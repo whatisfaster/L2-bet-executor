@@ -1,0 +1,40 @@
+incoming:
+  rpc:
+    - https://data-seed-prebsc-1-s1.binance.org:8545/
+    - https://data-seed-prebsc-2-s1.binance.org:8545/
+    - https://data-seed-prebsc-1-s2.binance.org:8545/
+    - https://data-seed-prebsc-2-s2.binance.org:8545/
+    - https://data-seed-prebsc-1-s3.binance.org:8545/
+    - https://data-seed-prebsc-2-s3.binance.org:8545/
+  rate_limits:
+    - 10000/300
+  contract: "0x295B855E8AD2316762Ea8Db12770e9A821f13DE6"
+  first_block: 6076300
+
+rewards:
+  rpc:
+    - https://data-seed-prebsc-1-s1.binance.org:8545/
+    - https://data-seed-prebsc-2-s1.binance.org:8545/
+    - https://data-seed-prebsc-1-s2.binance.org:8545/
+    - https://data-seed-prebsc-2-s2.binance.org:8545/
+    - https://data-seed-prebsc-1-s3.binance.org:8545/
+    - https://data-seed-prebsc-2-s3.binance.org:8545/
+  rate_limits:
+    - 10000/300
+  contract: "0x26d26d10eb11decf3227596a280412bd9cfd941c"
+  private_key: "**************************"
+  sender_address: "*************************"
+
+binance:
+  # URL: https://testnet.binancefuture.com
+  URL: https://fapi.binance.com
+  API_Key: ****************************
+  Secret_Key: ***********************
+
+db:
+  conn: "mysql+pymysql://doadmin:*******@wif-mysql-do-user-7260359-0.b.db.ondigitalocean.com:25060/defaultdb"
+
+algo:
+  safebelt-trigger: 1.5
+  win-trigger: 2.5
+  timeout-seconds: 172800 # 2 days * 24 hours/day * 3600 seconds/hour

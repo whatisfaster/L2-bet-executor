@@ -1,0 +1,4 @@
+venv
+*.pyc
+testnet_config.yml
+alembic.ini
