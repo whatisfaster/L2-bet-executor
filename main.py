@@ -8,7 +8,6 @@ import time
 import yaml
 
 from binance_wrappers import (
-    SUPPORTED_PRECISION,
     OrderRole,
     create_order,
     create_stoppers,
@@ -41,7 +40,7 @@ def extract_config():
     parser.add_argument("config", type=open)
     ns = parser.parse_args()
 
-    config = yaml.load(ns.config)
+    config = yaml.load(ns.config, Loader=yaml.FullLoader)
     ns.config.close()
     return config
 

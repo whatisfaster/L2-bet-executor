@@ -4,9 +4,11 @@ This module is just a wrapper over python-binance module.
 
 from collections import defaultdict
 import enum
+import decimal
 from typing import Tuple, List
 import logging
 import pprint
+import math
 
 from binance_f import RequestClient
 from binance_f.model.order import Order
@@ -58,12 +60,25 @@ def client(fn):
 
 
 @client
-def create_order(client, base_order_id: str, direction: BetDirection):
+def create_order(client, base_order_id: str, direction: BetDirection, position_usd_amount: decimal.Decimal):
+    # TESTING
+    position_usd_amount *= 1000
+
+    leverage = 46
+    position_usd_amount *= leverage
+
+    client.change_initial_leverage("BTCUSDT", leverage)
+    btc_price = client.get_mark_price(symbol="BTCUSDT").markPrice
+    precision = 0.001
+    exact_value = position_usd_amount / btc_price
+    quantity = math.floor(exact_value / precision) * precision
+    logger.info("BTC_price=%f, position_usd_amount=%f, quantity=%f",
+                btc_price, position_usd_amount, quantity)
     result = client.post_order(
         symbol="BTCUSDT",
         side=OrderSide.BUY if direction == BetDirection.UP else OrderSide.SELL,
         ordertype=OrderType.MARKET,
-        quantity=0.001,
+        quantity=quantity,
         positionSide="BOTH",
         newClientOrderId=get_client_order_id(base_order_id, OrderRole.INITIAL_MKT),
         newOrderRespType=OrderRespType.RESULT,

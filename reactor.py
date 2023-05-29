@@ -15,7 +15,8 @@ class Reactor:
         self.binance_config = self.config["binance"]
 
     def on_bet_created(self, bet: Bet):
-        base_order = self.create_order(self.binance_config, bet.id, BetDirection(bet.direction))
+        base_order = self.create_order(self.binance_config, bet.id, BetDirection(bet.direction),
+                                       decimal.Decimal(int(bet.amount.hex(), 16)) / decimal.Decimal(10**18))
         stop_loss_price, take_profit_price = (
             (
                 base_order.avgPrice

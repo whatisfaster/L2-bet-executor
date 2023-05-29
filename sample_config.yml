@@ -9,7 +9,7 @@ incoming:
   rate_limits:
     - 10000/300
   contract: "0x295B855E8AD2316762Ea8Db12770e9A821f13DE6"
-  first_block: 6076300
+  first_block: 27758716
 
 rewards:
   rpc:

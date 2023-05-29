@@ -1,7 +1,8 @@
 import datetime
 from enum import Enum, auto
+import logging
 
-from sqlalchemy import Column, Integer, String, DateTime, CHAR, BINARY, update
+from sqlalchemy import Column, Integer, String, DateTime, CHAR, BINARY, update, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -72,12 +73,14 @@ def set_last_processed_block(block: int):
     _session.commit()
     sql = (
         f"INSERT INTO {State.__tablename__} ({State.name.key}, {State.value.key}) "
-        f"VALUES (%s, %s) "
-        f"ON DUPLICATE KEY UPDATE value = GREATEST(%s, value)"
+        f"VALUES (:name, :value) "
+        f"ON DUPLICATE KEY UPDATE value = GREATEST(:value, value)"
     )
-    with _engine.connect() as con:
-        con.execute(sql, (StateKeys.LAST_PROCESSED_BLOCK.value, block, block))
 
+    with _engine.connect() as con:
+        #logging.debug("Setting last processed block to %s %s", sql, (StateKeys.LAST_PROCESSED_BLOCK.value, block))
+        #con.execute(sql, {"name": StateKeys.LAST_PROCESSED_BLOCK.value, "value": block})
+        con.execute(text(sql), {"name": StateKeys.LAST_PROCESSED_BLOCK.value, "value": block})
 
 def create_bet(bet: Bet):
     _session.add(bet)
