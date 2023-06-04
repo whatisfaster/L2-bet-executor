@@ -66,6 +66,7 @@ def get_last_processed_block(default: int):
         .filter_by(name=StateKeys.LAST_PROCESSED_BLOCK.value)
         .first()
     )
+    logging.debug("Got last processed block %r", res)
     return int(res.value) if res is not None else default
 
 
@@ -78,9 +79,11 @@ def set_last_processed_block(block: int):
     )
 
     with _engine.connect() as con:
-        #logging.debug("Setting last processed block to %s %s", sql, (StateKeys.LAST_PROCESSED_BLOCK.value, block))
+        logging.debug("Setting last processed block to %s %s", sql, (StateKeys.LAST_PROCESSED_BLOCK.value, block))
         #con.execute(sql, {"name": StateKeys.LAST_PROCESSED_BLOCK.value, "value": block})
         con.execute(text(sql), {"name": StateKeys.LAST_PROCESSED_BLOCK.value, "value": block})
+        con.commit()
+
 
 def create_bet(bet: Bet):
     _session.add(bet)

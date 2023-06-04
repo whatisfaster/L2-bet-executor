@@ -3,6 +3,7 @@ This module is just a wrapper over python-binance module.
 """
 
 from collections import defaultdict
+import decimal
 import enum
 import decimal
 from typing import Tuple, List
@@ -12,12 +13,10 @@ import math
 
 from binance_f import RequestClient
 from binance_f.model.order import Order
-from binance_f.model.constant import OrderSide, OrderType, OrderRespType
+from binance_f.model.constant import OrderSide, OrderType, OrderRespType, FuturesMarginType
+from binance_f.exception.binanceapiexception import BinanceApiException
 
 from models import BetDirection
-
-SUPPORTED_PRECISION = 0.0001
-
 
 
 logger = logging.getLogger(__name__)
@@ -60,7 +59,7 @@ def client(fn):
 
 
 @client
-def create_order(client, base_order_id: str, direction: BetDirection, position_usd_amount: decimal.Decimal):
+def create_order(client, base_order_id: str, direction: BetDirection, position_usd_amount: decimal.Decimal, boundary_calculator):
     # TESTING
     position_usd_amount *= 1000
 
@@ -68,51 +67,89 @@ def create_order(client, base_order_id: str, direction: BetDirection, position_u
     position_usd_amount *= leverage
 
     client.change_initial_leverage("BTCUSDT", leverage)
+    try:
+        client.change_margin_type("BTCUSDT", FuturesMarginType.ISOLATED)
+    except BinanceApiException as e:
+        ok_errors = ['[Executing] -4046: No need to change margin type.'] # No need to change margin type
+        logger.error("Raising the exception because error message %r is not in %r", e.error_message, ok_errors)
+        if (e.error_message not in ok_errors):
+            raise
     btc_price = client.get_mark_price(symbol="BTCUSDT").markPrice
-    precision = 0.001
-    exact_value = position_usd_amount / btc_price
-    quantity = math.floor(exact_value / precision) * precision
-    logger.info("BTC_price=%f, position_usd_amount=%f, quantity=%f",
+    exact_value = position_usd_amount / decimal.Decimal(btc_price)
+    # quantity = math.floor(exact_value / precision) * precision
+    quantity = str(exact_value.quantize(decimal.Decimal('.001'), rounding=decimal.ROUND_DOWN))
+    
+    logger.info("BTC_price=%s, position_usd_amount=%s, quantity=%s",
                 btc_price, position_usd_amount, quantity)
-    result = client.post_order(
-        symbol="BTCUSDT",
-        side=OrderSide.BUY if direction == BetDirection.UP else OrderSide.SELL,
-        ordertype=OrderType.MARKET,
-        quantity=quantity,
-        positionSide="BOTH",
-        newClientOrderId=get_client_order_id(base_order_id, OrderRole.INITIAL_MKT),
-        newOrderRespType=OrderRespType.RESULT,
-    )
+    try:
+        result = client.post_order(
+            symbol="BTCUSDT",
+            side=OrderSide.BUY if direction == BetDirection.UP else OrderSide.SELL,
+            ordertype=OrderType.MARKET,
+            quantity=quantity,
+            positionSide="BOTH",
+            newClientOrderId=get_client_order_id(base_order_id, OrderRole.INITIAL_MKT),
+            newOrderRespType=OrderRespType.RESULT
+        )
+    except BinanceApiException as e:
+        ok_errors = ['[Executing] -4015: Client order id is not valid.']
+        logger.error("Raising the exception because error message %r is not in %r", e.error_message, ok_errors)
+        if (e.error_message not in ok_errors):
+            raise
+        else:
+            logger.info("Worked with overlap, tried to create an order with the same ID: %s, got rejected, its OK", get_client_order_id(base_order_id, OrderRole.INITIAL_MKT))
+            return
     logger.info("Created and executed order for the position: %r", result)
     assert result.status == "FILLED"
-    return result
+
+    stop_loss_price, take_profit_price = boundary_calculator(decimal.Decimal(result.avgPrice), direction)
+    if direction == BetDirection.UP:
+        stop_loss_price = stop_loss_price.quantize(decimal.Decimal('.01'), rounding=decimal.ROUND_UP)
+        take_profit_price = take_profit_price.quantize(decimal.Decimal('.01'), rounding=decimal.ROUND_DOWN)
+    else:
+        stop_loss_price = stop_loss_price.quantize(decimal.Decimal('.01'), rounding=decimal.ROUND_DOWN)
+        take_profit_price = take_profit_price.quantize(decimal.Decimal('.01'), rounding=decimal.ROUND_UP)
+    logger.info("Stop loss %s , take profit %s", stop_loss_price, take_profit_price)
+
+    create_stoppers(client, result, direction, take_profit_price, stop_loss_price)
 
 
-@client
 def create_stoppers(client, base_order: Order, direction: BetDirection,
                     take_profit_price: float = None, stop_loss_price: float = None):
     side = OrderSide.SELL if (direction == BetDirection.UP) else OrderSide.BUY
     base = parse_client_order_id(base_order.clientOrderId)[0]
-    stop_loss_order = client.post_order(
-        symbol=base_order.symbol,
-        side=side,
-        ordertype=OrderType.STOP_MARKET,
-        quantity=base_order.executedQty,
-        stopPrice=('%.2f' % (stop_loss_price)).rstrip('0').rstrip('.'),
-        positionSide="BOTH",
-        newClientOrderId=get_client_order_id(base, OrderRole.STOP_LOSS),
-    )
-    logger.info("Created (ack) stop loss order: %r", stop_loss_order)
-    take_profit_order = client.post_order(
-        symbol=base_order.symbol,
-        side=side,
-        ordertype=OrderType.TAKE_PROFIT_MARKET,
-        quantity=base_order.executedQty,
-        stopPrice=('%.2f' % (take_profit_price)).rstrip('0').rstrip('.'),
-        positionSide="BOTH",
-        newClientOrderId=get_client_order_id(base, OrderRole.TAKE_PROFIT),
-    )
-    logger.info("Created (ack) take profit order: %r", take_profit_order)
+    executed_qty = decimal.Decimal(base_order.executedQty).quantize(decimal.Decimal("0.001"))
+    try:
+        stop_loss_order = client.post_order(
+            symbol=base_order.symbol,
+            side=side,
+            ordertype=OrderType.STOP_MARKET,
+            quantity=executed_qty,
+            stopPrice=str(stop_loss_price),
+            positionSide="BOTH",
+            newClientOrderId=get_client_order_id(base, OrderRole.STOP_LOSS),
+        )
+        logger.info("Created (ack) stop loss order: %r", stop_loss_order)
+    except BinanceApiException as e:
+        if e.error_message == '[Executing] -4015: Client order id is not valid.':
+            # TODO: deduce position
+            pass
+
+    try:
+        take_profit_order = client.post_order(
+            symbol=base_order.symbol,
+            side=side,
+            ordertype=OrderType.TAKE_PROFIT_MARKET,
+            quantity=executed_qty,
+            stopPrice=str(take_profit_price),
+            positionSide="BOTH",
+            newClientOrderId=get_client_order_id(base, OrderRole.TAKE_PROFIT),
+        )
+        logger.info("Created (ack) take profit order: %r", take_profit_order)
+    except BinanceApiException as e:
+        if e.error_message == '[Executing] -4015: Client order id is not valid.':
+            # TODO: deduce position, remove stop order
+            pass
 
 
 @client
@@ -146,6 +183,7 @@ def check_open_orders(client) -> Tuple[List[str], List[Tuple[str, OrderRole]]]:
     """
     orders = client.get_open_orders("BTCUSDT")
     buckets = defaultdict(list)
+    logger.info("Currently open orders: %r", orders)
     for order in orders:
         base, role = parse_client_order_id(order.clientOrderId)
         buckets[base].append(role)

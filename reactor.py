@@ -1,3 +1,4 @@
+import decimal
 import logging
 
 from binance_wrappers import inverse_role, get_client_order_id, OrderRole
@@ -5,40 +6,34 @@ from models import Bet, BetDirection, create_bet
 
 
 class Reactor:
-    def __init__(self, config, contract_caller, create_order, create_stoppers, check_open_orders, cancel_order):
+    def __init__(self, config, contract_caller, create_order, check_open_orders, cancel_order):
         self.config = config
         self.contract_caller = contract_caller
         self.create_order = create_order
-        self.create_stoppers = create_stoppers
         self.check_open_orders = check_open_orders
         self.cancel_order = cancel_order
         self.binance_config = self.config["binance"]
 
-    def on_bet_created(self, bet: Bet):
-        base_order = self.create_order(self.binance_config, bet.id, BetDirection(bet.direction),
-                                       decimal.Decimal(int(bet.amount.hex(), 16)) / decimal.Decimal(10**18))
+    def boundary_calculator(self, current_price, direction):
+        safebelt_ratio = decimal.Decimal(self.config["algo"]["safebelt-trigger"]) / decimal.Decimal(100.0)
+        wintrigger_ratio = decimal.Decimal(self.config["algo"]["win-trigger"]) / decimal.Decimal(100.0)
         stop_loss_price, take_profit_price = (
             (
-                base_order.avgPrice
-                * (1.0 - self.config["algo"]["safebelt-trigger"] / 100.0),
-                base_order.avgPrice
-                * (1.0 + self.config["algo"]["win-trigger"] / 100.0),
+                current_price * (decimal.Decimal(1.0) - safebelt_ratio),
+                current_price * (decimal.Decimal(1.0) + wintrigger_ratio),
             )
-            if (bet.direction == BetDirection.UP)
+            if (direction == BetDirection.UP)
             else (
-                base_order.avgPrice
-                * (1.0 + self.config["algo"]["safebelt-trigger"] / 100.0),
-                base_order.avgPrice
-                * (1.0 - self.config["algo"]["win-trigger"] / 100.0),
+                current_price * (decimal.Decimal(1.0) + safebelt_ratio),
+                current_price * (decimal.Decimal(1.0) - wintrigger_ratio),
             )
         )
-        self.create_stoppers(
-            self.binance_config,
-            base_order,
-            bet.direction,
-            stop_loss_price=stop_loss_price,
-            take_profit_price=take_profit_price,
-        )
+        return stop_loss_price, take_profit_price
+
+    def on_bet_created(self, bet: Bet):
+        base_order = self.create_order(self.binance_config, bet.id, BetDirection(bet.direction),
+                                       decimal.Decimal(int(bet.amount.hex(), 16)) / decimal.Decimal(10**18),
+                                       self.boundary_calculator)
         self.contract_caller.on_bet_accepted(bet.id)
         create_bet(bet)
 

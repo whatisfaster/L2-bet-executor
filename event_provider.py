@@ -21,7 +21,7 @@ BET_PLACED_TOPIC = "0x4f1eed5e863a822b0f9eb960dfdab2cc5a99beec4b191f2a7a9c7e28e5
 class EventProvider:
     def __init__(self, entrypoints: List[str], contract_address: str, first_block: int, reactor):
         self.w3 = self.init_entrypoint(entrypoints)
-        self.event_filter = self.init_filter(self.w3, contract_address, first_block)
+        self.event_filter = self.init_filter(self.w3, contract_address, first_block + 1)
         self.reactor = reactor
 
     def init_entrypoint(self, entrypoints: List[str]):
@@ -54,7 +54,7 @@ class EventProvider:
             logger.info("Fetching updates")
             result = self.w3.eth.getFilterChanges(self.event_filter.filter_id)
             await self.process_result(result)
-            await asyncio.sleep(60)
+            await asyncio.sleep(30)
 
     @staticmethod
     def decode_event(event) -> Bet:

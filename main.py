@@ -10,7 +10,6 @@ import yaml
 from binance_wrappers import (
     OrderRole,
     create_order,
-    create_stoppers,
     get_orders,
     get_client_order_id,
     cancel_order,
@@ -87,7 +86,6 @@ def main():
         config=config,
         contract_caller=contract_caller,
         create_order=create_order,
-        create_stoppers=create_stoppers,
         check_open_orders=check_open_orders,
         cancel_order=cancel_order,
     )
@@ -108,6 +106,7 @@ def main():
     )
 
     loop.create_task(events.run())
+    get_orders(config["binance"])
 
     loop.run_forever()
     return
@@ -133,16 +132,7 @@ def main():
             base_order.avgPrice * (1.0 - config["algo"]["win-trigger"] / 100.0),
         )
     )
-    create_stoppers(
-        cfg,
-        base_order,
-        direction,
-        stop_loss_price=stop_loss_price,
-        take_profit_price=take_profit_price,
-    )
 
-
-    # get_orders(cfg)
 
 
 if __name__ == "__main__":
